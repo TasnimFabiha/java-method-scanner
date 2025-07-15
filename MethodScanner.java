@@ -1,16 +1,18 @@
-import java.io.*;
-import java.lang.reflect.Method;
-import java.lang.reflect.Parameter;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.ArrayList;
+import io.github.classgraph.*;
+
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class MethodScanner {
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 2) {
-            System.out.println("Usage: java MethodLister <path_to_target_classes> <output_file_path>");
+        if (args.length < 1 || args.length > 2) {
+            System.out.println("Usage: java MethodLister <path_to_target_classes> [output_file_path]");
             return;
         }
 
@@ -20,53 +22,57 @@ public class MethodScanner {
             return;
         }
 
-        File outputFile = new File(args[1]);
+        File outputFile;
+        if (args.length == 2) {
+            outputFile = new File(args[1]);
+        } else {
+            // Use parent of 'target/classes' and name the file 'fully-qualified-methods.txt'
+            File parentDir = classesDir.getParentFile();  // should be 'target'
+            if (parentDir != null && parentDir.getName().equals("target")) {
+                File projectRoot = parentDir.getParentFile();
+                outputFile = new File(projectRoot, "fully-qualified-methods.txt");
+            } else {
+                // fallback: use current working directory
+                outputFile = new File("fully-qualified-methods.txt");
+            }
+        }
+
         outputFile.getParentFile().mkdirs();
+
 
         try (PrintWriter writer = new PrintWriter(new FileWriter(outputFile))) {
 
-            URLClassLoader classLoader = new URLClassLoader(new URL[]{classesDir.toURI().toURL()});
-            List<String> classNames = new ArrayList<>();
-            collectClassNames(classesDir, "", classNames);
+            try (ScanResult scanResult = new ClassGraph()
+                    .overrideClasspath(classesDir)
+                    .enableClassInfo()
+                    .enableMethodInfo()
+                    .scan()) {
 
-            for (String className : classNames) {
-                try {
-                    Class<?> clazz = classLoader.loadClass(className);
-                    for (Method method : clazz.getDeclaredMethods()) {
-                        StringBuilder methodSignature = new StringBuilder();
-                        methodSignature.append(clazz.getName()).append(".").append(method.getName()).append("(");
+                for (ClassInfo classInfo : scanResult.getAllClasses()) {
+                    for (MethodInfo methodInfo : classInfo.getDeclaredMethodInfo()) {
+                        String className = classInfo.getName();
+                        String methodName = methodInfo.getName();
 
-                        Parameter[] parameters = method.getParameters();
-                        for (int i = 0; i < parameters.length; i++) {
-                            methodSignature.append(parameters[i].getType().getName());
-                            if (i < parameters.length - 1) {
-                                methodSignature.append(", ");
-                            }
-                        }
+                        List<String> paramTypes = Arrays.stream(methodInfo.getParameterInfo())
+                                .map(p -> p.getTypeDescriptor().toString())
+                                .collect(Collectors.toList());
 
-                        methodSignature.append(") : ").append(method.getReturnType().getName());
+                        String returnType = methodInfo.getTypeDescriptor().getResultType().toString();
+
+                        String methodSignature = className + "." + methodName + "(" +
+                                String.join(", ", paramTypes) + ") : " + returnType;
+
                         writer.println(methodSignature);
                     }
-                } catch (Throwable t) {
-                    writer.println("Could not load class: " + className);
                 }
             }
 
-            System.out.println("Method list saved to methods.txt");
+            System.out.println("Method list saved to "+ outputFile);
 
         } catch (Exception e) {
             System.err.println("Failed to write output: " + e.getMessage());
         }
     }
 
-    private static void collectClassNames(File dir, String pkg, List<String> result) {
-        for (File file : dir.listFiles()) {
-            if (file.isDirectory()) {
-                collectClassNames(file, pkg + file.getName() + ".", result);
-            } else if (file.getName().endsWith(".class")) {
-                String className = pkg + file.getName().replace(".class", "");
-                result.add(className);
-            }
-        }
-    }
+
 }

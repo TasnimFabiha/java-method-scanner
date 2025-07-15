@@ -19,7 +19,7 @@
 - This results in **incomplete method coverage**, in projects that depend on external frameworks.
 
 **While Dependency Finder supports a wide range of analysis tasks, this tool focuses specifically on method signature extraction**:
-- Uses **ClassGraph**, which reads `.class` files directly
+- Uses **[ClassGraph](https://github.com/classgraph/classgraph)**, which reads `.class` files directly
 - **No need to load classes**, so it works even if referenced types are missing
 - Extracts methods even from complex or framework-dependent classes, which were ignored by Dependency Finder
 
